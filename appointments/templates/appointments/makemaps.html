@@ -1,0 +1,5 @@
+<h1>Make Maps</h1>
+<h2>{{ timeframe }} of {{ month }}/{{ day }}/{{ year }}</h2>
+{% for instance in appointments %}
+	<p>date: {{ instance.apptdate }} ; time: {{ instance.appttime }} ; location: {{ instance.apptadd }} ; patient: {{ instance.claimnum }} ; appointment id: {{ instance.apptnum }}</p>
+{% endfor %}

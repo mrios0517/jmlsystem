@@ -1,0 +1,1133 @@
+{% load static %}
+<!--{% block javascript %}
+<script>
+
+"use strict";
+(function() {
+
+  function $(id) {
+    return document.getElementById(id);
+  }
+
+  window.onload = initialize; 
+
+  function initialize() {
+    $("test").innerHTML = "change of text";
+  }
+})();
+
+</script>
+{% endblock %}
+-->
+
+<!-- FOR ADDING IMAGES 
+  <img src="{% static 'img.png' %}" alt="Mon image" />
+-->
+
+<head>
+  {% block title %}<title>Calendar - week of [insert monday's date]</title>{% endblock %}
+  <link rel="stylesheet" type="text/css" href="{% static 'apptcalendar/css/calendar.css' %}">
+  <script>
+
+  "use strict";
+  (function() {
+
+    function $(id) {
+      return document.getElementById(id);
+    }
+    function qs(selector) {
+     return document.querySelector(selector);
+    }
+    function qsa(selector) {
+     return document.querySelectorAll(selector);
+    }
+    function gen(elType) {
+     return document.createElement(elType);
+    }
+
+
+
+    window.onload = initialize; 
+
+    function initialize() {
+      Date.prototype.addDays = function(days) {
+        var date = new Date(this.valueOf());
+        date.setDate(date.getDate() + days);
+        return date;
+      }
+      //$("test").innerHTML = "change of text";
+      var appointment = {{ data_list|safe }};
+      console.log(appointment);
+      //console.log(Object.keys(appointment));
+      //var appointment = {{appt_list}};
+    
+      var _apptdic = getStartEnd(appointment);
+      console.log('inside initialize...');
+      console.log(_apptdic);
+      var calendar = createCalendar(_apptdic);
+      var table = calendar['table'];
+      var rangestart = calendar['start'];
+      var rangeend = calendar['end'];
+      console.log('<table>: ' + calendar);
+      console.log($('body'));
+      $('body').appendChild(table);
+      //loadEvents(_apptdic);
+      console.log($('calbody'));
+      console.log(getCoordinates(($('calbody'))));
+      console.log('SORTING BY DATE');
+      //sortByDate returns a sorted array of appointments
+      var apptsorted = sortByDate(_apptdic);
+      console.log(apptsorted);
+      //for each item in the sorted array, store arrays that fall within the same time range 
+      var overlap = getOverlap(apptsorted);
+      console.log('OVERLAP&*', overlap);
+      //duplicates must be deleted before finding children or else recursion will run infinitely
+      var delduplicates = deleteduplicates(overlap, 'left', _apptdic);
+      console.log(delduplicates);
+      var result = Object.assign([], delduplicates);
+      for (var item in result) {
+        result[item] = 10;
+      }
+      console.log(result);
+      var childrendict = findchildren(delduplicates);
+      console.log(childrendict);
+      /*for (var item in childrendict)  {
+        console.log('parent', childrendict[item]);
+        var key = Object.keys(childrendict[item])[0];
+        var children = childrendict[item][key]
+        console.log('children', children);
+        console.log('children keys', Object.keys(children));
+        for (var _item in children) {
+          console.log('child', children[_item]);
+          var _key = Object.keys(children[_item])[0];
+          console.log(_key, children[_item][_key]);
+        }
+      }*/
+      var groups = makegroups(childrendict);
+      loadEvents(_apptdic, groups, getCoordinates($('calbody')), rangestart, rangeend);
+    }  
+
+
+
+    function deleteduplicates(overlap, order, apptdic) {
+      var appointments = apptdic['appointments'];
+      if (order == 'left' || order == 'right') {
+        var result = [];
+        //console.log(overlap);
+        for (var item in overlap) {
+          //console.log(overlap[item]);
+          var cur = {};
+          var child_result = [];
+          var parentid = Object.keys(overlap[item])[0];
+          //console.log(parentid);
+          var children = overlap[item][parentid];
+          var appointment = appointments[parentid];
+
+          for (var _item in children) {
+            //console.log('inside children');
+            var child_id = children[_item][0];
+            var child = children[_item][1];
+            //console.log('appointment object');
+            //console.log(appointment);
+            //console.log('child object');
+            //console.log(child);
+            var child_index;
+            // make into seperate function
+            for (var _item_ in overlap) {
+              var match_id = Object.keys(overlap[_item_])[0];
+              //console.log('index of child in overlap: ' + _item_); 
+              //console.log('MATCH_ID of child in overlap: ' + match_id); 
+              //console.log(child_id);
+              if (match_id == child_id) {
+                child_index = _item_;
+              }
+            }
+            if (order == 'left') {
+              //console.log('child object');
+              //console.log(child);
+              //console.log('child_index: ' + child_index + ', parent_index: ' + item);
+              if (child_index > item) {
+                //console.log('before delete');
+                //console.log(children);
+                child_result.push(children[_item]);
+                //delete children[_item];
+                //console.log('after delete');
+                //console.log(children);
+              } 
+            } else if (order == 'right') {
+                if (child_index < item) {
+                  child_result.push(children[_item]);
+                  //delete children[_item];
+                }
+            }
+          }
+          cur[parentid] = child_result;
+          result.push(cur);
+          //console.log('Current Children: ' + children);
+          //overlap[item][parentid] = children;  
+        } 
+        return result;
+      } else {
+        return ('order must be set to \'left\' or \'right\'');
+      }
+    }
+
+    //array[item] = dictionary
+    //dictionary = {objectarray: childrenarray}
+    //childrenarray = [objectarray, objectarray, ...]
+    //for each children, create a dictionary of {objectarray: childrenarray}
+    //objectarray = [id, object]
+
+    function makegroups(overlap) {
+      var result = []; 
+      var grouped = [];
+      for (var item in overlap) {
+        var current = {}; 
+        var parent_id = Object.keys(overlap[item])[0];
+        var children = overlap[item][parent_id];
+        if (!(grouped.includes(parent_id))) {
+          current[parent_id] = makegroups2(children, [], grouped, 1);
+        } else {
+          //current[parent_id] = [];
+          delete current[parent_id];
+        }
+        result.push(current);
+      }
+      console.log ('grouped', grouped);
+      return result; 
+    }
+
+    function makegroups2(children, descendants, grouped, loop) {
+      console.log('loop', loop); 
+      for (var item in children) {
+        var child_key = Object.keys(children[item])[0];
+        var child_id = child_key.split(',')[0];
+        console.log('descendants, ', descendants);
+        console.log('current child, ', child_id);
+        console.log(descendants.includes(child_id));  
+        if (!(descendants.includes(child_id))) { 
+          descendants.push(child_id);
+          grouped.push(child_id);
+          descendants = makegroups2(children[item][child_key], descendants, grouped, loop+1 ); 
+        }        
+      }
+      return descendants;
+    }
+
+    function findchildren(overlap) {
+      var result = Object.assign([], overlap);
+      for (var item in result) {
+        var parent_id = Object.keys(result[item])[0];
+        result[item][parent_id] = findchildren2(overlap, result[item][parent_id], 0);
+      }
+      return result;
+    }
+
+    function findchildren2(overlap, current, loop) {
+      for (var child in current) {
+
+        console.log('LOOP - start', loop);
+        //create dictionary
+        var result = {}; 
+        //find match in overlap
+        console.log('child', current[child]);
+        var child_id = current[child][0];
+        for (var item in overlap) {
+          var item_id = Object.keys(overlap[item])[0];
+          if (item_id == child_id) {
+            console.log('item_id = child_id', item_id, child_id);
+            console.log('loop - assign grandchildren to children', loop);
+            var grandchildren = Object.assign([], overlap[item][item_id]);
+            console.log('grandchildren', grandchildren);
+            result[current[child]] = findchildren2(overlap, grandchildren, loop+1);
+          }
+        }
+        console.log('loop - add child to array', loop);
+        current[child] = result;
+      }
+      return current;
+    }
+
+
+   /* function findchildren(overlap, current, loop) {
+        //console.log('FIND CHILDREN');
+        console.log('LOOP', loop);
+        console.log('CURRENT: ', current);
+        
+
+        //go through each item in current
+        for (var item in current) {
+          console.log('loop', loop);
+          //console.log('RECURSION');
+          //console.log(item);
+          //console.log(current[item]);
+          //console.log(Object.keys(current[item]));
+
+          //returns the single key ([0] because only one dictionary per array item) associated with its children
+          console.log('key', Object.keys(current[item])[0]);
+          var parent_id = Object.keys(current[item])[0];
+          console.log('parent_id', parent_id);
+          console.log('children', current[item][parent_id]);
+
+          //for each child of the current item
+          //current[item][key] = children
+          for (var _item in current[item][parent_id]) {
+            console.log('loop', loop);
+            console.log('parentid', parent_id);
+            console.log('children', current[item][parent_id])
+            console.log('current child index', _item);
+            console.log('current child', current[item][parent_id][_item]);
+            var child = current[item][parent_id][_item];
+            console.log('$$$$ ' + child);
+            var currentchildren = [];
+            for (var _item_ in overlap) {
+              //console.long('$$%%%%');
+              //console.log(current[item][key][_item]);
+              //onsole.log(Object.keys(overlap[_item])[0]);
+
+              // a match has been made. A match will allways be made since each event is listed in overlap; however, some do not have children
+              var child_id  = Object.keys(overlap[_item_])[0];
+              //console.log('$$$$$');
+              //console.log(childkey);
+              //console.log(current[item][key][_item]);
+
+              if (child[0] == child_id) {
+                //console.log('match!!');
+                //console.log(current[item][key][_item]);
+                //console.log(overlap[_item]);
+
+                // create a dictionary and assign the grandchildren(found in overlap) to each child 
+                var grandchildren = {};
+                grandchildren[child[0]] = overlap[_item_][child_id];
+                child = grandchildren;
+              }
+            }
+            current[item][parent_id] = findchildren(overlap, currentchildren, loop+1);
+          }
+        }
+        return current;
+    }*/
+
+/*    function findchildren(overlap, current) {
+      for (var item in current) {
+          if (!(item in overlap)) {
+              item = {}
+          } else {
+              current[item] = overlap[item];
+              current[item] = findchildren(overlap, current[item]);
+          }
+      }
+      return current;
+    }*/
+
+
+    function getFixedDay(_day) {
+      var day = _day;
+      if (day == 0) {
+          day = 6;
+        } else if (day>0 && day<=6){
+          day = day - 1;
+        } 
+
+      return day;
+    }
+
+    function sortByDate (apptdic) {
+      var appointment = apptdic['appointments'];
+      var items = Object.keys(appointment).map(function(key) {
+        return [key, appointment[key]];
+      });
+
+      items.sort(function(first, second) {
+        return first[1]['start'] - second[1]['start'];
+      });
+      console.log(items);
+      return items;
+    }
+
+
+    //returns overlap in the form {parent: children}, children may also be parents
+    function getOverlap (apptarray) {
+      var appointment = apptarray;
+      console.log(appointment);
+      var overlap = [];
+      for (var item in appointment) {
+        //console.log('$$$');
+        //console.log(appointment[item]);
+        var overlapcur = {};
+        var children = [];
+        for (var _item in appointment) {
+          if(appointment[item] != appointment[_item]) {
+
+            //console.log('$$$');
+            //console.log(appointment[item]);
+            if ((appointment[item][1]['start'] >= appointment[_item][1]['start'] && appointment[item][1]['start'] <= appointment[_item][1]['end']) || (appointment[item][1]['end'] >= appointment[_item][1]['start']  && appointment[item][1]['end'] <= appointment[_item][1]['end']) || (appointment[item][1]['start'] <= appointment[_item][1]['start']  && appointment[item][1]['end'] >= appointment[_item][1]['end'])) {
+                children.push(appointment[_item]);
+            }
+          }
+          //console.log('appointment[item] - [id, appointment object]');
+          //console.log(appointment[item]);
+          var apptid = appointment[item][0];
+          console.log('parent', apptid, appointment[item][1]['start'], appointment[item][1]['end']);
+          overlapcur[apptid] = children;
+          console.log('Current child', appointment[_item], );
+          console.log('OVERLAPTOTAL', overlapcur, appointment[_item][1]['start'], appointment[_item][1]['end']);
+          //console.log(Object.keys(overlapcur));
+        } 
+        //console.log('$$$');
+        //console.log(overlapcur);
+        overlap.push(overlapcur); 
+      }
+      return overlap;
+    }
+
+    function getOverlapDict (apptdict) {
+      var appointment = apptdict['appointments'];
+      //console.log(appointment);
+      var overlap = {};
+      for (var item in appointment) {
+        //console.log('$$$');
+        //console.log(appointment[item]);
+        var overlapcur = [];
+        for (var _item in appointment) {
+          if(appointment[item] != appointment[_item]) {
+            //console.log('$$$');
+            //console.log(appointment[item]);
+            if ((appointment[item]['start'] >= appointment[_item]['start'] && appointment[item]['start'] <= appointment[_item]['end']) || (appointment[item]['end'] >= appointment[_item]['start']  && appointment[item]['end'] <= appointment[_item]['end'])) {
+                overlapcur.push(appointment[_item]);
+            }
+          }
+        } 
+        overlap[item] = overlapcur;
+      }
+      return overlap;
+    }
+
+    function loadEvents(apptdic, groups, coordinates, timestart, timeend) {
+      //var overlap = getOverlap(apptdic);
+      console.log('GROUPS', groups);
+      var colors = {'retro': {1: [102, 101, 71], 2: [251,46,1], 3:[111,203,159], 4:[255,226,138], 5:[255,254,179]}};
+      var hourstart = timestart;
+      var appointment = apptdic['appointments'];
+      var body = $('body');
+      console.log(body);
+      console.log(Object.keys(appointment));
+
+      for (var item in groups) {
+        var parent_id = Object.keys(groups[item])[0];
+        if(appointment[parent_id]!=null) {
+          console.log('CREATING EVENT FROM OVERLAP, PARENT EVENT:', appointment[parent_id], groups[item]);
+          createEvent(appointment[parent_id], 0, coordinates, hourstart);
+          var children = groups[item][parent_id];
+
+          for (var i = 0; i<children.length; i++) {
+            var child_id = children[i];
+            console.log('CHILD_ID', child_id);
+            console.log('CREATING EVENT FROM OVERLAP, CHILD EVENT:', children[i]);
+            createEvent(appointment[child_id], i+1, coordinates, hourstart);
+          }
+        }
+      }
+    }
+
+    function createEvent(appointment, indent, coordinates, hourstart) {
+      var tdlen = coordinates[0][0]['right'] - coordinates[0][0]['left'];
+      var tdheight = coordinates[0][0]['bottom'] - coordinates[0][0]['top'];
+      console.log('CURRENT APPOINTMENT', appointment); 
+      var start = appointment['start'];
+      var end = appointment['end'];
+      var length = 0;
+      var div = gen('div');
+      var div = gen('div');
+      if (start != null && end != null){
+          var difference = end-start;
+          length = difference/60000;
+      } 
+      var hour = start.getHours();
+      var minute = start.getMinutes();
+      console.log('hour', hour);
+      console.log('hourstart', hourstart);
+      if (hour != 0 && minute != 0) {
+        var tr = (hour-hourstart)*4 + Math.floor(minute/15);
+        var trfraction = (minute%15)/15;
+        var extrapx = trfraction*tdheight;
+        var td = getFixedDay(start.getDay());
+        console.log('COORDINATES:', coordinates);
+        console.log('tr', tr, 'td', td);
+        var tdblock = coordinates[tr][td]['element'];
+        var _div = gen('div');
+        _div.style.top = (trfraction * 100) + '%';
+        var lengthper = (length/15) * 100;
+        _div.style.height = lengthper + '%';
+        var indentpx = 15*indent;
+        _div.style.left = indentpx + '%';
+        _div.id = appointment['id'];
+        tdblock.appendChild(_div);
+      }
+    }
+
+     //pass in the calendar body and return the coordinates of each <td> element, excluding those with the .hour class because they do not represent a timeslot
+    function getCoordinates(calbody) {
+        var tr_list = calbody.children;
+        var coordinates = {}; // coordinates = {trblock: {weekday/column: td coordinates}};
+
+        for (var instance in Object.keys(tr_list)){
+            if (tr_list[instance] instanceof Element) {
+                var item = instance; 
+                var children = tr_list[item].children;
+                coordinates[item] = {};
+                for (var _item in Object.keys(children)) {
+                    if (children[_item] instanceof Element) {
+                        var _item_ = _item 
+                        if (Object.keys(children).length == 8) {
+                            if (_item == 0) {
+                                continue;
+                            } else {
+                                _item_ -= 1;
+                            }
+                        }
+                        var rect = children[_item].getBoundingClientRect();
+                        var rectcoor = {'left': rect.left, 'right': rect.right, 'top': rect.top, 'bottom': rect.bottom, 'element': children[_item]};
+                        coordinates[item][_item_] = rectcoor;
+                    }   
+                }
+            } 
+        }
+        return coordinates;
+    }
+
+    //apptdic = {dictionary: {_apptdic}, timerange: [start, end], first: firstapptofweek}
+    function createCalendar(apptdic){
+      var appointment = apptdic
+      console.log('inside createCalendar()');
+      console.log(appointment);
+      var calstart = appointment['timerange'][0];
+      var calend = appointment['timerange'][1];
+      var calstartday = appointment['first'];
+      var calrangestart;
+      var calrangeend;
+      var table = gen('table');   
+
+      //if no range was returned for the set of appointments by getStartEnd, then set start and end to default (9)
+      //else set the calendar range to approximately <two hours prior and after range (this is for eye space)
+      if (calstart == null || calend == null){
+        calrangestart = 9;
+        calrangeend = 18;
+      } else {
+        if (calstart.getMinutes() > 0) {
+          calrangestart = calstart.getHours() - 1;
+        } else {
+          calrangestart = calstart.getHours() - 2;
+        }
+        calrangeend = calend.getHours() + 2;
+
+        if (calrangestart < 0) {
+            calrangestart = 0;
+        }
+        if (calrangeend > 24) {
+            calrangeend = 24;
+        }
+      }
+      
+      //get the weekday of the first date and use it to calculate the date of the monday of that week
+      var firstdate = calstartday.getDate();
+      var firstDay = calstartday.getDay();
+      //have to modify weekday because it returns an index Sunday through Saturday. This calendar uses indexes Monday through Friday
+      if (firstDay == 0) {
+          firstDay = 6;
+        } else if (firstDay>0 && firstDay<=6){
+          firstDay = firstDay - 1;
+        } 
+      var mondaydate = firstdate - firstDay;
+      console.log('MONDAY DATE', mondaydate);
+      
+      //used to put the weekday names on the table. Modify if desired
+      var days = {0: {'long': 'Monday', 'short': 'Mon'}, 1: {'long': 'Tuesday', 'short': 'Tue'}, 2: {'long': 'Wednesday', 'short': 'Wed'}, 3: {'long': 'Thursday', 'short': 'Thu'}, 4: {'long': 'Friday', 'short': 'Fri'}, 5: {'long': 'Saturday', 'short': 'Sat'}, 6: {'long': 'Sunday', 'short': 'Sun'}};  
+
+      var month_days = {1:31, 2:28, 3:31, 4:30, 5:31, 6:30, 7:31, 8:31, 9:30, 10:31, 11:30, 12:31};
+
+      var leap_years = [2020, 2024, 2028];
+      if (leap_years.includes(calstartday.getFullYear())){
+        month_days[2] = 29;
+      }
+
+      for (var item in days) {
+        var _date = parseInt(mondaydate) + parseInt(item);
+        days[item]['month'] = calstartday.getMonth() + 1;
+        if (_date < 1) {
+          // getMonth returns 0-11
+          days[item]['month'] = calstartday.getMonth();
+          var _date = parseInt(month_days[calstartday.getMonth]) - _date;
+        }
+        console.log(days[item]['long'], days[item]['month'], _date);
+        days[item]['date'] = _date
+      } 
+
+         
+      var calhead = gen('thead');
+      calhead.id = 'calhead';
+      var _tr = gen('tr');
+      for (var i = 0; i<Object.keys(days).length; i++){
+        if (i==0) {
+            _tr.appendChild(gen('th'));
+          }
+          var currentdate = mondaydate + i;
+          var th = gen('th');
+          var form = gen('form');
+          var date_str = 'day/' + days[i]['month'] + '/' + days[i]['date'] + '/' + calstartday.getFullYear();
+          form.action = 'getmaps/' + date_str;
+          form.method = 'GET';
+          var button = gen('button');
+          button.type = 'submit'; 
+          button.innerHTML = "Get maps";
+          form.appendChild(button);
+          th.appendChild(form);
+          _tr.appendChild(th);
+      }
+      var tr = gen('tr');
+      for (var i = 0; i<Object.keys(days).length; i++){
+          if (i==0) {
+            var th = gen('th');
+            var form = gen('form');
+            var date_str = 'week/' + days[0]['month'] + '/' + days[0]['date'] + '/' + calstartday.getFullYear();
+            form.action = 'getmaps/' + date_str;
+            form.method = 'GET';
+            var button = gen('button');
+            button.type = 'submit';
+            button.innerHTML = "Get maps for week";
+            form.appendChild(button);
+            th.appendChild(form);
+            tr.appendChild(th);
+          }
+          var th = gen('th');
+          var span1 = gen('span');
+          span1.className = 'day'
+          span1.innerHTML = days[i]['date'];
+          th.appendChild(span1);
+          var span2 = gen('span');
+          span2.className = 'long';
+          span2.innerHTML = days[i]['long'];
+          th.appendChild(span2);
+          var span3 = gen('span');
+          span3.className = 'short';
+          span3.innerHTML = days[i]['short'];
+          th.appendChild(span3);
+          tr.appendChild(th);
+      }
+      calhead.appendChild(_tr);
+      calhead.appendChild(tr);
+      table.appendChild(calhead);
+
+      //timeinterval is the number chunks an hour is divided into, i.e., 4 chunks each representing 15 minutes
+      var calbody = gen('tbody');
+      calbody.id = 'calbody';
+      var timeinterval = 4;
+      var weekdays = 7;
+      for (var i = calrangestart; i<calrangeend; i++) {
+        for(var x = 0; x<timeinterval; x++){
+          var tr = document.createElement('tr');
+          //tr.className = 'hour' + i;
+          for(var y = 0; y<weekdays; y++){
+            if (x == 0 && y == 0){
+              var td = document.createElement('td');
+              td.className = "hour";
+              td.rowSpan = 4;
+              var span = document.createElement('span');
+              if (i==0){
+                span.innerHTML = '12:00 AM';
+              } else if (i==12) {
+                span.innerHTML = '' + i + ":00 PM";
+              } else if (i>12) {
+                span.innerHTML = '' + (i-12) + ':00 PM';
+              } else {
+                span.innerHTML = '' + i + ':00 AM'; 
+              }
+              td.appendChild(span);
+              tr.appendChild(td);
+            }
+            var _td = document.createElement('td');
+          
+            tr.appendChild(_td);
+          }
+          calbody.appendChild(tr);
+        }
+      }
+      table.appendChild(calbody); 
+      console.log(calbody);
+      console.log(calhead);
+      table.style.zIndex = '-1';
+      return {'table':table, 'start':calrangestart , 'end':calrangeend};
+    }
+
+    //pass in a dictionary of appointmments {id: {appointment}, ...} return new dictionary with {dictionary: {_apptdic}, timerange: [start, end], first: firstapptofweek}
+    function getStartEnd(apptdic) {
+      var _apptdic = {}
+      console.log('inside getStartEnd(apptdic)... printing apptdic...');
+      var appointment = apptdic;
+      console.log(appointment);
+      var calstart = null;
+      var calend = null;
+      var calstartday = null;
+      if (!(Object.entries(appointment) === 0 && appointment.constructor === Object)){
+        for (var item in appointment){
+          // console.log(item);
+          //console.log(JSON.stringify(appointment[item]));
+          /*console.log(typeof appointment);
+          console.log(typeof appointment[item]);
+          console.log(Object.keys(appointment));*/
+          appointment[item]['start'] = null;
+          appointment[item]['end'] = null;
+
+          var starttime = new Date(appointment[item]['apptdate']);
+          starttime = starttime.addDays(1);
+          var endtime = new Date(appointment[item]['apptdate']);
+          endtime = endtime.addDays(1);
+          //console.log(starttime);
+          //console.log(appointment[item]['starthour'])
+          var starthour = appointment[item]['starthour'];
+          console.log ('starthour: ' + starthour);
+          var startmin = appointment[item]['startmin'];
+          console.log ('startmin: ' + startmin);
+          var startampm = appointment[item]['startampm'];
+          console.log ('startampm: ' + startampm);
+          var endhour = appointment[item]['endhour'];
+          console.log ('endhour: ' + endhour);
+          var endmin = appointment[item]['endmin'];
+          console.log('endmin: ' + endmin);
+          var endampm = appointment[item]['endampm'];
+          console.log('endampm: ' + endampm);
+          
+          //console.log(starttime.getMonth() + '/' + starttime.getDate() +'/' + starttime.getFullYear());
+          if (starthour >= 0 && startmin >= 0 && startampm != ''){
+
+            if (starthour == 12 && startampm == 'am'){
+              starthour = 0;
+            }
+            else if(starthour != 12 && startampm == 'pm'){
+              starthour = starthour + 12;
+            }
+            starttime.setHours(starthour, startmin, 0);
+            if (calstartday == null)  {
+              calstartday = starttime; 
+            } else if (calstartday>starttime) {
+              calstartday = starttime; 
+            }
+            if (calstart == null) {
+              calstart = starttime;
+            }else if (calstart.getHours() > starttime.getHours()) {
+              calstart = starttime;
+            }else if (calstart.getHours() == starttime.getHours()) {
+              if (calstart.getMinutes() > starttime.getMinutes()) {
+                calstart = starttime;
+              }
+            }
+            appointment[item]['start'] = starttime;
+          }else {
+            starttime.setHours(0, 0, 0);
+            appointment[item]['start'] = starttime;
+          }
+
+          if (endhour >= 0 && endmin >= 0 && endampm != ''){
+
+            if (endhour == 12 && endampm == 'am'){
+              endhour = 0;
+            }
+            else if(endhour != 12 && endampm == 'pm'){
+              endhour = endhour + 12;
+            }
+            endtime.setHours(endhour, endmin, 0);
+            if (calend == null) {
+              calend = endtime;
+            }else if (calend.getHours() < endtime.getHours()) {
+              calend = endtime;
+            }else if (calend.getHours() == endtime.getHours()) {
+              if (calend.getMinutes() < endtime.getMinutes()) {
+                calend = endtime;
+              }
+            }
+            console.log('%%##$endtime:' + endtime);
+            appointment[item]['end'] = endtime; 
+
+          } else {
+            endtime.setHours(starttime.getHours(), starttime.getMinutes(), 0);
+            if (calend == null) {
+              calend = endtime;
+            }else if (calend.getHours() < endtime.getHours()) {
+              calend = endtime;
+            }else if (calend.getHours() == endtime.getHours()) {
+              if (calend.getMinutes() < endtime.getMinutes()) {
+                calend = endtime;
+              }
+            }
+            appointment[item]['end'] = endtime;
+          }
+          
+
+          console.log('printing appointment[item]...');
+          console.log(appointment[item]);
+          console.log('printing appointment[item][start]: ' + appointment[item]['start']);
+          console.log('printing appointment[item][end]: ' + appointment[item]['end']);
+
+        }
+
+
+        _apptdic['appointments'] = appointment;
+        _apptdic['timerange'] = [calstart, calend];
+        _apptdic['first'] = calstartday; 
+        console.log('printing final _apptdic for return');
+        console.log(_apptdic); 
+
+      }
+      return _apptdic;
+    }
+
+  })();
+  </script>
+  <!--<link rel="stylesheet" href="{% static 'apptcalendar/js/calendar.js' %}">-->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body id='body'>
+
+  <!--<table>
+    <thead id ='calhead'>
+      <tr>
+        <th></th>
+        <th>
+          <span class="day">1</span>
+          <span class="long">Monday</span>
+          <span class="short">Mon</span>
+        </th>
+        <th>
+          <span class="day">2</span>
+          <span class="long">Tuesday</span>
+          <span class="short">Tue</span>
+        </th>
+        <th>
+          <span class="day">3</span>
+          <span class="long">Wendsday</span>
+          <span class="short">We</span>
+        </th>
+        <th>
+          <span class="day">4</span>
+          <span class="long">Thursday</span>
+          <span class="short">Thur</span>
+        </th>
+        <th>
+          <span class="day active">5</span>
+          <span class="long">Friday</span>
+          <span class="short">Fri</span>
+        </th>
+        <th>
+          <span class="day">6</span>
+          <span class="long">Saturday</span>
+          <span class="short">Sat</span>
+        </th>
+        <th>
+          <span class="day">7</span>
+          <span class="long">Sunday</span>
+          <span class="short">Sun</span>
+        </th>
+      </tr> 
+    </thead>
+    <tbody id="calbody">
+      <tr>
+        <td class="hour" rowspan="4"><span>1:00</span></td>
+        <td id = "test">test</td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td class="hour" rowspan="4"><span>2:00</span></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+
+      <tr>
+        <td class="hour" rowspan="4"><span>3:00</span></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td class="hour" rowspan="4"><span>4:00</span></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td class="hour" rowspan="4"><span>5:00</span></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td class="hour" rowspan="4"><span>6:00</span></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td class="hour" rowspan="4"><span>7:00</span></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td class="hour" rowspan="4"><span>8:00</span></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr>
+      <tr>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+        <td></td>
+      </tr> 
+    </tbody>
+  </table>-->
+
+</body>

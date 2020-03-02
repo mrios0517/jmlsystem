@@ -1,0 +1,14 @@
+<h1>Create an appointment</h1>
+
+{% if error_message %}<p><strong>{{ error_message }}</strong></p>{% endif %}
+
+<h1>Select a patient</h1>
+
+<form action="." method='POST'>
+{% csrf_token %}
+{% for patient in patient_list %}
+    <input type="radio" name="claim_num" id="choice{{ forloop.counter }}" value="{{ patient.claimnum }}">
+    <label for="patient{{ forloop.counter }}">{{ patient.name }} - {{ patient.claimnum }}</label><br>
+{% endfor %}
+<input type="submit" value="yes">
+</form>

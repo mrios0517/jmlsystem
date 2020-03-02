@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h1>Appointment Detail</h1>
+<p>{{ object.claimnum }}, date of injury: {{ object.doj }}</p>
+<!--
+<p>Scheduled Start time - {{ object.starthour }}:{% if object.startmin < 10 %}0{{ object.startmin }}{% elif object.startmin >= 10 %}{{ object.startmin }}{% endif %} {{ object.startampm }}</p>
+<p>Actual Start time - {{ object.starthour }}:{% if object.startmin < 10 %}0{{ object.startmin }}{% elif object.startmin >= 10 %}{{ object.startmin }}{% endif %} {{ object.startampm }}</p>
+<p>End time - {{ object.endhour }}:{% if object.endmin < 10 %}0{{ object.endmin }}{% elif object.endmin >= 10 %}{{ object.endmin }}{% endif %} {{ object.endampm }}</p>
+-->
+<p>Date - {{ object.apptdate }}</p>
+<p>Scheduled start time - {{ time.start }}</p>
+<p>Actual start time - {{ time.start }}</p>
+<p>End time - {{ time.end }}</p>
+<p>Location - {{ object.apptadd }}
+<p>Type of Appointment - {{ object.appttype }}</p>
+<p>Healthcare or vocational provider's name - {{ object.hcname }}</p>
+<p>Agency Name - JML Interpreting</p>
+<p>Interpreter - {{ object.interpreter }}</p>
+<p>Group appointment: {{ object.group }}</p>
+<p>First or last appointment of the day: {% if object.firstappt == True or object.lastappt == True %}True{% else %}False{% endif %}</p>
+{% endblock %}

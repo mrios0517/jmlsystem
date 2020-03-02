@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+
+{% block content %}
+
+{% for instance in object_list %}
+	<p>date: {{ instance.apptdate }} ; time: {{ instance.appttime }} ; location: {{ instance.apptadd }} ; patient: {{ instance.claimnum }} ; appointment id: {{ instance.apptnum }}</p>
+
+{% endfor %}
+
+{% endblock %}
